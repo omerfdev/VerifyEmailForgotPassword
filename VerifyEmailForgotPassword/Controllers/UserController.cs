@@ -41,10 +41,45 @@ namespace VerifyEmailForgotPassword.Controllers
         public async Task<IActionResult> Login(UserLoginRequest request)
         {
             var user = await _context.Users.FirstOrDefaultAsync(x => x.Email == request.Email);
-            if (user == null) { return BadRequest("User Not Found."); }
+            if (user == null) { return BadRequest("User Not Found"); }
             if (user.VerifiedAt == null) { return BadRequest("Not Verified"); }
             if (!VerifyPasswordHash(request.Password,user.PasswordHash,user.PasswordSalt)) { return BadRequest("User Password is Incorrect"); }
             return Ok($"Welcome Back {user.Email}");
+        }
+        [HttpPost("verify")]
+        public async Task<IActionResult> Verify(string token)
+        {
+            var user = await _context.Users.FirstOrDefaultAsync(x => x.VerificationToken == token);
+            if (user == null) { return BadRequest("Invalid Token"); }
+            user.VerifiedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+
+            return Ok($"User Verified {user.Email}");
+        }
+        [HttpPost("forgotPassword")]
+        public async Task<IActionResult> ForgotPassword(string email)
+        {
+            var user = await _context.Users.FirstOrDefaultAsync(x => x.Email == email);
+            if (user == null) { return BadRequest("User Not Found"); }
+            user.PasswordResetToken = CreateRandomToken();
+            user.ResetTokenExpires = DateTime.UtcNow.AddDays(1);
+            await _context.SaveChangesAsync();
+
+            return Ok($"You Reset your password {user.Email}");
+        }
+        [HttpPost("resetPassword")]
+        public async Task<IActionResult> ResetPassword(ResetPasswordRequest request)
+        {
+            var user = await _context.Users.FirstOrDefaultAsync(x => x.PasswordResetToken == request.Token);
+            if (user == null || user.ResetTokenExpires<DateTime.UtcNow) { return BadRequest("Invalid Token"); }
+           CreatePasswordHash(request.Password,out byte[] passwordHash,out byte[] passwordSalt);
+            user.PasswordSalt = passwordSalt;
+            user.PasswordHash = passwordHash;
+            user.PasswordResetToken= null;
+            user.ResetTokenExpires= null;
+            await _context.SaveChangesAsync();
+
+            return Ok($"Your Password Successfully Reset {user.Email}");
         }
 
         private string CreateRandomToken()
